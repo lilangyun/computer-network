@@ -23,6 +23,9 @@
 #define ECHO_PORT 9999
 #define BUF_SIZE 4096
 
+const char msg1[BUF_SIZE] = "HTTP/1.1 501 Not Implemented\r\n\r\n";
+const char msg2[BUF_SIZE] = "HTTP/1.1 400 Bad request\r\n\r\n";
+
 int close_socket(int sock)
 {
     if (close(sock))
@@ -86,17 +89,31 @@ int main(int argc, char* argv[])
 
         while((readret = recv(client_sock, buf, BUF_SIZE, 0)) >= 1)
         {
-            fprintf(stdout, "Received %s", buf);
+            // parse
+            Request *request = parse(buf, readret, client_sock);
+            int len;
 
-            if (send(client_sock, buf, readret, 0) != readret)
+            // echo
+            if(request == NULL){  //  Invalid format
+                len = send(client_sock, msg2, readret, 0);
+                fprintf(stdout, "Sending %s", msg2);
+            }
+            else if(!strcmp(request->http_method, "GET") || !strcmp(request->http_method, "POST") || !strcmp(request->http_method, "HEAD")){
+                len = send(client_sock, buf, readret, 0);
+                fprintf(stdout, "Sending %s", buf);
+            }
+            else{  //  Not performed
+                len = send(client_sock, msg1, strlen(msg1), 0);
+                fprintf(stdout, "Sending %s", msg1);
+            }
+
+            if (len != readret)
             {
                 close_socket(client_sock);
                 close_socket(sock);
                 fprintf(stderr, "Error sending to client.\n");
                 return EXIT_FAILURE;
             }
-
-            fprintf(stdout, "Sending %s", buf);
             
             memset(buf, 0, BUF_SIZE);
         } 

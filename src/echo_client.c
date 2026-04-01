@@ -62,11 +62,12 @@ int main(int argc, char* argv[])
 
     // 评测平台是通过文件去检测的
     int fd = open(argv[3], O_RDONLY);
-    int readret = read(fd, buf, BUF_SIZE);
+    char msg[BUF_SIZE];
+    int readret = read(fd, msg, BUF_SIZE);
 
     // send all only once
-    send(sock, buf , readret, 0);  //  send msg
-    fprintf(stdout, "Sending %s", buf);  // hints
+    send(sock, msg, strlen(msg), 0);  //  send msg
+    fprintf(stdout, "Sending %s", msg);  // hints
 
     // 接收MESSAGE
     int bytes_received;

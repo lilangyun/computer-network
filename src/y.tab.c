@@ -442,7 +442,7 @@ union yyalloc
 /* YYNNTS -- Number of nonterminals.  */
 #define YYNNTS  9
 /* YYNRULES -- Number of rules.  */
-#define YYNRULES  18
+#define YYNRULES  19
 /* YYNSTATES -- Number of states.  */
 #define YYNSTATES  33
 
@@ -492,7 +492,7 @@ static const yytype_uint8 yytranslate[] =
 static const yytype_uint8 yyrline[] =
 {
        0,   113,   113,   114,   117,   123,   127,   156,   157,   160,
-     163,   171,   175,   187,   191,   195,   200,   207,   221
+     163,   171,   175,   187,   191,   195,   200,   207,   212,   221
 };
 #endif
 
@@ -544,9 +544,9 @@ static const yytype_int8 yypact[] =
      means the default is an error.  */
 static const yytype_uint8 yydefact[] =
 {
-       0,     3,     4,     2,     5,     0,     0,     0,     0,     6,
+       0,     3,     4,     2,     5,     0,    18,     0,     0,     6,
       13,     0,     1,    10,     9,     8,     7,    11,    13,    14,
-      15,     0,    18,     0,     0,    13,    13,    12,     0,    16,
+      15,     0,    19,     0,     0,    13,    13,    12,     0,    16,
       13,     0,    17
 };
 
@@ -597,14 +597,14 @@ static const yytype_uint8 yystos[] =
 static const yytype_uint8 yyr1[] =
 {
        0,    15,    16,    16,    16,    17,    17,    18,    18,    18,
-      18,    19,    19,    20,    20,    20,    21,    22,    23
+      18,    19,    19,    20,    20,    20,    21,    22,    22,    23
 };
 
   /* YYR2[YYN] -- Number of symbols on the right hand side of rule YYN.  */
 static const yytype_uint8 yyr2[] =
 {
        0,     2,     1,     1,     1,     1,     2,     1,     1,     1,
-       1,     1,     3,     0,     1,     1,     6,     7,     3
+       1,     1,     3,     0,     1,     1,     6,     7,     0,     3
 };
 
 
@@ -1404,7 +1404,7 @@ yyreduce:
 #line 1405 "y.tab.c" /* yacc.c:1646  */
     break;
 
-  case 18:
+  case 19:
 #line 221 "src/parser.y" /* yacc.c:1646  */
     {
 	YPRINTF("parsing_request: Matched Success.\n");
@@ -1650,8 +1650,8 @@ yyreturn:
 void set_parsing_options(char *buf, size_t siz, Request *request)
 {
     parsing_buf = buf;
-	  parsing_offset = 0;
-	  parsing_buf_siz = siz;
+	parsing_offset = 0;
+	parsing_buf_siz = siz;
     parsing_request = request;
 }
 
