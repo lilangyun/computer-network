@@ -14,6 +14,7 @@ Request * parse(char *buffer, int size, int socketFd) {  // socketFD not used?
 	char ch;
 	char buf[8192];
 	memset(buf, 0, 8192);
+	int num = 0, header_num = 0;
 
 	state = STATE_START;
 	while (state != STATE_CRLFCRLF) {
@@ -32,6 +33,7 @@ Request * parse(char *buffer, int size, int socketFd) {  // socketFD not used?
 			break;
 		case STATE_CR:
 		case STATE_CRLFCR:
+		    num++;
 			expected = '\n';
 			break;
 		default:
@@ -51,7 +53,13 @@ Request * parse(char *buffer, int size, int socketFd) {  // socketFD not used?
 		Request *request = (Request *) malloc(sizeof(Request));
         request->header_count=0;
         //TODO You will need to handle resizing this in parser.y
-        request->headers = (Request_header *) malloc(sizeof(Request_header)*1);
+		if(num <= 2){
+			header_num = 0;
+		}
+		else{
+			header_num = num - 2;
+		}
+		request->headers = (Request_header *) malloc(sizeof(Request_header) * header_num);
 		set_parsing_options(buf, i, request);
 
 		if (yyparse() == SUCCESS) {
@@ -59,6 +67,8 @@ Request * parse(char *buffer, int size, int socketFd) {  // socketFD not used?
 		}
 	}
     //TODO Handle Malformed Requests
+	
+
     printf("Parsing Failed\n");
 	return NULL;
 }

@@ -11,7 +11,7 @@ typedef struct
 	char header_value[4096];
 } Request_header;
 
-//HTTP Request Header
+//HTTP Request
 typedef struct
 {
 	char http_version[50];

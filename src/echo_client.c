@@ -28,7 +28,7 @@ int main(int argc, char* argv[])
 {
     if (argc != 4)
     {
-        fprintf(stderr, "usage: %s <server-ip> <port> <file-path>",argv[0]);
+        fprintf(stderr, "usage: %s <server-ip> <port> <file-path>\n",argv[0]);
         return EXIT_FAILURE;
     }
 
@@ -50,23 +50,23 @@ int main(int argc, char* argv[])
 
     if((sock = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol)) == -1)
     {
-        fprintf(stderr, "Socket failed");
+        fprintf(stderr, "Socket failed\n");
         return EXIT_FAILURE;
     }
     
     if (connect (sock, servinfo->ai_addr, servinfo->ai_addrlen) == -1)
     {
-        fprintf(stderr, "Connect");
+        fprintf(stderr, "Connect\n");
         return EXIT_FAILURE;
     }
 
     // 评测平台是通过文件去检测的
-    int fd = open(argv[3], O_RDONLY);
+    int fd = open(argv[3], O_RDONLY); 
     char msg[BUF_SIZE];
     int readret = read(fd, msg, BUF_SIZE);
 
     // send all only once
-    send(sock, msg, strlen(msg), 0);  //  send msg
+    send(sock, msg, readret, 0);  //  send msg
     fprintf(stdout, "Sending %s", msg);  // hints
 
     // 接收MESSAGE
