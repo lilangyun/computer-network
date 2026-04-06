@@ -25,13 +25,18 @@
 #define ECHO_PORT 9999
 #define BUF_SIZE 4096
 
-const char *RESPONSE_400 = "HTTP/1.1 400 Bad request\r\n\r\n";
-const char *RESPONSE_501 = "HTTP/1.1 501 Not Implemented\r\n\r\n";
 const char *RESPONSE_200 = "HTTP/1.1 200 OK\r\n";
-const char *RESPONSE_505 = "HTTP/1.1 505 HTTP Version not supported\r\n";
+const char *RESPONSE_400 = "HTTP/1.1 400 Bad request\r\n\r\n";
 const char *RESPONSE_404 = "HTTP/1.1 404 Not Found\r\n\r\n";
+const char *RESPONSE_501 = "HTTP/1.1 501 Not Implemented\r\n\r\n";
+const char *RESPONSE_505 = "HTTP/1.1 505 HTTP Version not supported\r\n";
 
 const char *URI_Default = "static_site/index.html";
+
+const char *Header_Default = "Content-Length";
+
+int GET(Request *request, int client_sock);
+int HEAD(Request *request, int client_sock);
 
 int close_socket(int sock)
 {
@@ -72,7 +77,6 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
-
     if (listen(sock, 5))
     {
         close_socket(sock);
@@ -112,8 +116,7 @@ int main(int argc, char* argv[])
                 if(len < 0) break;
             }
             else if(strcmp(request->http_method, "HEAD")==0){
-                // TODO
-                len = GET(request, client_sock);
+                len = HEAD(request, client_sock);
                 if(len < 0) break;
             }
             else if(strcmp(request->http_method, "POST")==0){
@@ -160,10 +163,9 @@ int GET(Request *request, int client_sock){
     // Check Version
     if(strcmp(request->http_version, "HTTP/1.1") != 0){
         len = send(client_sock, RESPONSE_505, strlen(RESPONSE_505), 0);
-        if(len < 0){
-            return len;
-        }
+        if(len < 0) return len;
         fprintf(stdout, "Sending %s",RESPONSE_505);
+        return len;
     }
     // end
 
@@ -171,45 +173,56 @@ int GET(Request *request, int client_sock){
     int fd = open(URI_Default, O_RDONLY);
     char buf[8192];
     int readret = read(fd, buf, 8192);
+    if(readret < 0){
+        // ERROR
+    }
+    // end
+
+    // Response
     char *response = (char *)malloc( (8192+strlen(RESPONSE_200)) * sizeof(char));
     strcpy(response, RESPONSE_200);
-    strcat(response, buf);
+    char header[BUFSIZ];
+    sprintf(header, "Content-Length: %d\r\n", readret);
+    sprintf(response, "%s%s\r\n%s", RESPONSE_200, header, buf);
     len = send(client_sock, response, strlen(response), 0);
     if(len < 0){
         return len;
     }
-    fprintf(stdout, "Sending %s", buf);
+    fprintf(stdout, "Sending %s", response);
     // end
     
+    free(response);
     return len;
 }
 
 int HEAD(Request *request, int client_sock){
-     int len;
+    int len;
     // Check Version
     if(strcmp(request->http_version, "HTTP/1.1") != 0){
         len = send(client_sock, RESPONSE_505, strlen(RESPONSE_505), 0);
-        if(len < 0){
-            return len;
-        }
+        if(len < 0) return len;
         fprintf(stdout, "Sending %s",RESPONSE_505);
+        return len;
     }
     // end
 
     // Reap data
-    struct stat* Stat;
-    char buf[8192];
-    int statret = stat(URI_Default, Stat);
-    // Stat->;
+    struct stat info;
+    stat(URI_Default, &info);
+    // end
+
+    // Response
     char *response = (char *)malloc( (8192+strlen(RESPONSE_200)) * sizeof(char));
-    strcpy(response, RESPONSE_200);
-    strcat(response, buf);
+    char header[BUFSIZ];
+    sprintf(header, "Content-Length: %ld\r\n\n", info.st_size);
+    sprintf(response, "%s%s", RESPONSE_200, header);
     len = send(client_sock, response, strlen(response), 0);
     if(len < 0){
         return len;
     }
-    fprintf(stdout, "Sending %s", buf);
+    fprintf(stdout, "Sending %s", response);
     // end
     
+    free(response);
     return len;
 }
