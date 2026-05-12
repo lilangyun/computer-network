@@ -20,7 +20,10 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <arpa/inet.h>
+#include <time.h>
 #include "parse.h"
+#include "log.h"
 
 #define ECHO_PORT 9999
 #define BUF_SIZE 4096
@@ -29,38 +32,37 @@ const char *RESPONSE_200 = "HTTP/1.1 200 OK\r\n";
 const char *RESPONSE_400 = "HTTP/1.1 400 Bad request\r\n\r\n";
 const char *RESPONSE_404 = "HTTP/1.1 404 Not Found\r\n\r\n";
 const char *RESPONSE_501 = "HTTP/1.1 501 Not Implemented\r\n\r\n";
-const char *RESPONSE_505 = "HTTP/1.1 505 HTTP Version not supported\r\n";
-
-const char *URI_Default = "static_site/index.html";
+const char *RESPONSE_505 = "HTTP/1.1 505 HTTP Version not supported\r\n\r\n";
 
 const char *Header_Default = "Content-Length";
 
-int GET(Request *request, int client_sock);
-int HEAD(Request *request, int client_sock);
+// 辅助函数
+void parse_fileType(char *fileName, char *fileType);
+int add_header(Request *request, char *sbuf, char *file_path);
+int close_socket(int sock);
 
-int close_socket(int sock)
-{
-    if (close(sock))
-    {
-        fprintf(stderr, "Failed closing socket.\n");
-        return 1;
-    }
-    return 0;
-}
 
+// 模块函数
+int handle_request(Request *request, char *buf, char *sbuf, int client_sock, const char *client_ip);
+
+// 主函数
 int main(int argc, char* argv[])
 {
     int sock, client_sock;
     ssize_t readret;
     socklen_t cli_size;
     struct sockaddr_in addr, cli_addr;
-    char buf[BUF_SIZE];
+    char buf[8192];  // 接收Buf
+    char sbuf[8192];  // 发送Buf
 
-    fprintf(stdout, "----- Echo Server -----\n");
+    fprintf(stdout, "----- Liso Server -----\n");
+    // 开启日志模块
+    init_log();
     
     /* all networked programs must create a socket */
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1)
     {
+        close_log();
         fprintf(stderr, "Failed creating socket.\n");
         return EXIT_FAILURE;
     }
@@ -73,6 +75,7 @@ int main(int argc, char* argv[])
     if (bind(sock, (struct sockaddr *) &addr, sizeof(addr)))
     {
         close_socket(sock);
+        close_log();
         fprintf(stderr, "Failed binding socket.\n");
         return EXIT_FAILURE;
     }
@@ -80,6 +83,7 @@ int main(int argc, char* argv[])
     if (listen(sock, 5))
     {
         close_socket(sock);
+        close_log();
         fprintf(stderr, "Error listening on socket.\n");
         return EXIT_FAILURE;
     }
@@ -92,54 +96,45 @@ int main(int argc, char* argv[])
                                     &cli_size)) == -1)
         {
             close(sock);
+            close_log();
             fprintf(stderr, "Error accepting connection.\n");
             return EXIT_FAILURE;
         }
 
+        // 生成IP字符串
+        char client_ip[16];
+        strcpy(client_ip, inet_ntoa(cli_addr.sin_addr));
+        fprintf(stderr, "%s\n", client_ip);
+
         readret = 0;
 
-        // recv_begin
-        if((readret = recv(client_sock, buf, BUF_SIZE, 0)) >= 1)
-        {
-            // parse
-            Request *request = parse(buf, readret, client_sock);
-            int len;
+        // recv 接收模块
+        while((readret = recv(client_sock, buf, 8192, 0)) >= 1) {
+            // 是否保持持久连接
+            int keep_alive = 1;
 
-            // response
-            if(request == NULL){  //  Invalid format
-                len = send(client_sock, RESPONSE_400, strlen(RESPONSE_400), 0);
-                if(len < 0) break;
-                fprintf(stdout, "Sending %s", RESPONSE_400);  // 400
-            }
-            else if( strcmp(request->http_method, "GET")==0 ){
-                len = GET(request, client_sock);
-                if(len < 0) break;
-            }
-            else if(strcmp(request->http_method, "HEAD")==0){
-                len = HEAD(request, client_sock);
-                if(len < 0) break;
-            }
-            else if(strcmp(request->http_method, "POST")==0){
-                // echo
-                len = send(client_sock, buf, readret, 0);
-                if(len < 0) break;
-                fprintf(stdout, "Sending %s", buf);
-            }
-            else{  //  Not performed
-                len = send(client_sock, RESPONSE_501, strlen(RESPONSE_501), 0);
-                if(len < 0) break;
-                fprintf(stdout, "Sending %s", RESPONSE_501);  // 501
-            }
-            // response_end
+            // parse 解析模块
+            Request *request = parse(buf, readret, client_sock);
+
+            // response 响应模块
+            keep_alive = handle_request(request, buf, sbuf, client_sock, client_ip);
             
-            memset(buf, 0, BUF_SIZE);
+            // reset 重置操作
+            free(request);
+            memset(buf, 0, 8192);
+            memset(sbuf,0, 8192);
+
+            if(keep_alive == 0) {
+                // 不保持连接
+                break;
+            }
         }
-        // recv_end
 
         if (readret == -1)
         {
             close_socket(client_sock);
             close_socket(sock);
+            close_log();
             fprintf(stderr, "Error reading from client socket.\n");
             return EXIT_FAILURE;
         }
@@ -147,82 +142,187 @@ int main(int argc, char* argv[])
         if (close_socket(client_sock))
         {
             close_socket(sock);
+            close_log();
             fprintf(stderr, "Error closing client socket.\n");
             return EXIT_FAILURE;
         }
     }
 
-    close_socket(sock);
+    close_socket(sock);  // 关闭监听套接字
+    close_log();  // 关闭日志模块
 
     return EXIT_SUCCESS;
 }
 
-// GET Method
-int GET(Request *request, int client_sock){
-    int len;
-    // Check Version
-    if(strcmp(request->http_version, "HTTP/1.1") != 0){
-        len = send(client_sock, RESPONSE_505, strlen(RESPONSE_505), 0);
-        if(len < 0) return len;
-        fprintf(stdout, "Sending %s",RESPONSE_505);
-        return len;
-    }
-    // end
+// 响应模块
+int handle_request(Request *request, char *buf, char *sbuf, int client_sock, const char *client_ip){
+    // 组装请求行 -- 传入日志模块
+    char request_line[256];
+    sprintf(request_line, "%s %s %s",request->http_method, request->http_uri, request->http_version);
 
-    // Reap data
-    int fd = open(URI_Default, O_RDONLY);
-    char buf[8192];
-    int readret = read(fd, buf, 8192);
-    if(readret < 0){
-        // ERROR
+    // 分支 -- 判断是哪种请求
+    if(request == NULL){
+        strcpy(sbuf, RESPONSE_400);
+        send(client_sock, sbuf, strlen(sbuf), 0);
+        access_log(client_ip, request_line, 404, 0);
+        return 0;
     }
-    // end
+    else if(strcmp(request->http_method, "GET") == 0 || strcmp(request->http_method, "HEAD") == 0){
+        if(strcmp(request->http_version, "HTTP/1.1") != 0){
+            strcpy(sbuf, RESPONSE_505);
+            send(client_sock, sbuf, strlen(sbuf), 0);
+            access_log(client_ip, request_line, 505, 0);
+            return 0;
+        }
 
-    // Response
-    char *response = (char *)malloc( (8192+strlen(RESPONSE_200)) * sizeof(char));
-    strcpy(response, RESPONSE_200);
-    char header[BUFSIZ];
-    sprintf(header, "Content-Length: %d\r\n", readret);
-    sprintf(response, "%s%s\r\n%s", RESPONSE_200, header, buf);
-    len = send(client_sock, response, strlen(response), 0);
-    if(len < 0){
-        return len;
+        char file_path[1024] = "./static_site";
+        char *uri = request->http_uri;
+        if(uri[0] == '/') uri++;
+        if(strlen(uri) == 0) {
+            strcat(file_path, "/index.html");
+        } 
+        else {
+            strcat(file_path, "/");
+            strcat(file_path, uri);
+        }
+
+        fprintf(stderr, "File_path: %s.\n", file_path);
+        int fd = open(file_path, O_RDONLY);
+        fprintf(stderr, "fd = %d\n", fd);
+        // 文件无法打开
+        if(fd < 0){
+            strcpy(sbuf, RESPONSE_404);
+            send(client_sock, sbuf, strlen(sbuf), 0);
+            error_log(client_ip, "File Not Found", file_path);
+            return 0;
+        }
+        char data[BUF_SIZE];
+        int readret = read(fd, data, BUF_SIZE);
+        if(readret < 0){
+            error_log(client_ip, "File can't read", file_path);
+            close(fd);
+            return 0;
+        }
+        data[readret] = '\0';
+        // 添加头部
+        strcpy(sbuf, RESPONSE_200);
+        int ret = 0;
+        if(add_header(request, sbuf, file_path)) {
+            // 需要持久连接
+            ret = 1;
+        }
+        if(strcmp(request->http_method, "GET") == 0){
+            // GET 数据
+            strcat(sbuf, data);
+        }
+        send(client_sock, sbuf, strlen(sbuf), 0);
+
+        // access 日志记录
+        struct stat st;
+        stat(file_path, &st);
+        access_log(client_ip, request_line, 200, st.st_size);
+        return ret;
     }
-    fprintf(stdout, "Sending %s", response);
-    // end
-    
-    free(response);
-    return len;
+    else if(strcmp(request->http_method, "POST") == 0){
+        if(strcmp(request->http_version, "HTTP/1.1") != 0){
+            strcpy(sbuf, RESPONSE_505);
+            send(client_sock, sbuf, strlen(sbuf), 0);
+            access_log(client_ip, request_line, 505, 0);
+            return 0;
+        }
+        // echo
+        strcpy(sbuf, buf);
+        send(client_sock, sbuf, strlen(sbuf), 0);
+        access_log(client_ip, request_line, 200, strlen(sbuf));
+    }
+    else{
+        // 未实现的请求方法
+        strcpy(sbuf, RESPONSE_501);
+        send(client_sock, sbuf, strlen(sbuf), 0);
+        access_log(client_ip, request_line, 501, 0);
+        return 0;
+    }
+    return 0;
 }
 
-int HEAD(Request *request, int client_sock){
-    int len;
-    // Check Version
-    if(strcmp(request->http_version, "HTTP/1.1") != 0){
-        len = send(client_sock, RESPONSE_505, strlen(RESPONSE_505), 0);
-        if(len < 0) return len;
-        fprintf(stdout, "Sending %s",RESPONSE_505);
-        return len;
+// 判断文件类型
+void parse_fileType(char *fileName, char *fileType)
+{
+    if(strstr(fileName, ".html")) {
+        strcpy(fileType, "text/html");
     }
-    // end
-
-    // Reap data
-    struct stat info;
-    stat(URI_Default, &info);
-    // end
-
-    // Response
-    char *response = (char *)malloc( (8192+strlen(RESPONSE_200)) * sizeof(char));
-    char header[BUFSIZ];
-    sprintf(header, "Content-Length: %ld\r\n\n", info.st_size);
-    sprintf(response, "%s%s", RESPONSE_200, header);
-    len = send(client_sock, response, strlen(response), 0);
-    if(len < 0){
-        return len;
+    else if(strstr(fileName, ".css")) {
+        strcpy(fileType, "text/css");
     }
-    fprintf(stdout, "Sending %s", response);
-    // end
-    
-    free(response);
-    return len;
+    else if(strstr(fileName, ".png")) {
+        strcpy(fileType, "image/png");
+    }
+    else if(strstr(fileName, ".jpg") || strstr(fileName, ".jpeg")) {
+        strcpy(fileType, "image/jpeg");
+    }
+    else if(strstr(fileName, ".gif")) {
+        strcpy(fileType, "image/gif");
+    }
+    else {
+        strcpy(fileType, "text/plain");
+    }
+}
+
+// 添加头部组件
+int add_header(Request *request, char *sbuf, char *file_path){
+    int i = 0, keep_alive = 1;  // ret 用来记录是否保持连接
+    char date[64]; char fileType[64]; char temp[64];
+    char connect_msg[64] = "Connection: keep-alive\r\n";
+    time_t now_time = time(NULL);
+    for( ; (request != NULL) && (i < request->header_count); i++){
+        if(strcmp(request->headers[i].header_name, "Connection") == 0){
+            if(strcmp(request->headers[i].header_value, "close") == 0) {
+                keep_alive = 0;
+                strcpy(connect_msg, "Connection: close\r\n");
+            }
+            break;
+        }
+    }
+
+    // Server
+    strcat(sbuf, "Server: Liso/1.1\r\n");
+
+    // Date
+    strftime(date, sizeof(date), "%a, %d %b %Y %H:%M:%S %Z", gmtime(&now_time));
+    sprintf(temp, "Date: %s\r\n", date);
+    strcat(sbuf, temp);
+    memset(temp, 0, 64);
+
+    // Connection
+    strcat(sbuf, connect_msg);
+
+    // Content-Type
+    if(file_path != NULL) {
+        parse_fileType(file_path, fileType);
+        sprintf(temp, "Content-Type: %s\r\n", fileType);
+        strcat(sbuf, temp);
+        memset(temp, 0, 64);
+    }
+
+    // Content-Length
+    struct stat st;
+    if(file_path != NULL && stat(file_path, &st) == 0){
+        sprintf(temp, "Content-Length: %ld\r\n", st.st_size);
+        strcat(sbuf, temp);
+        memset(temp, 0, 64);
+    }
+    strcat(sbuf, "\r\n");
+
+    return keep_alive;
+}
+
+// 关闭socket
+int close_socket(int sock)
+{
+    if (close(sock))
+    {
+        fprintf(stderr, "Failed closing socket.\n");
+        return 1;
+    }
+    return 0;
 }

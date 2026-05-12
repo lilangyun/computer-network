@@ -202,7 +202,7 @@ request_line: token t_sp text t_sp text t_crlf {
     strcpy(parsing_request->http_method, $1);
 	strcpy(parsing_request->http_uri, $3);
 	strcpy(parsing_request->http_version, $5);
-}
+};
 
 request_header: token ows t_colon ows text ows t_crlf {
 	YPRINTF("request_Header:\n%s\n%s\n",$1,$5);
@@ -228,6 +228,9 @@ request_no_crlf request_header{
 request: request_no_crlf t_crlf{
 	YPRINTF("parsing_request: Matched Success.\n");
 	return SUCCESS;
+} | error{
+	YPRINTF("parsing_request: Failed request.\n");
+	return ERROR;
 };
 
 

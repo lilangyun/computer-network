@@ -54,7 +54,7 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
     
-    if (connect (sock, servinfo->ai_addr, servinfo->ai_addrlen) == -1)
+    if (connect(sock, servinfo->ai_addr, servinfo->ai_addrlen) == -1)
     {
         fprintf(stderr, "Connect\n");
         return EXIT_FAILURE;
@@ -62,19 +62,33 @@ int main(int argc, char* argv[])
 
     // 评测平台是通过文件去检测的
     int fd = open(argv[3], O_RDONLY); 
-    char msg[BUF_SIZE];
-    int readret = read(fd, msg, BUF_SIZE);
+    char msg[BUF_SIZE], send_buf[BUF_SIZE];
+    // 读文件
+    read(fd, msg, BUF_SIZE);
+    char *ptr = strstr(msg, "\r\n\r\n");  // 分割
+    char *tmp = msg;
 
-    // send all only once
-    send(sock, msg, readret, 0);  //  send msg
-    fprintf(stdout, "Sending %s", msg);  // hints
+    while( ptr != NULL) {
+        // 追加"\r\n"
+        memcpy(send_buf, tmp, ptr - tmp + 4);
+        
+        // send all only once
+        send(sock, send_buf, strlen(send_buf), 0);  //  send msg
+        fprintf(stdout, "Sending:\n");
+        fprintf(stdout, "%s", send_buf);  // hints
 
-    // 接收MESSAGE
-    int bytes_received;
-    if((bytes_received = recv(sock, buf, BUF_SIZE, 0)) > 1)
-    {
-        buf[bytes_received] = '\0';
-        fprintf(stdout, "Received %s", buf);
+        // 接收MESSAGE
+        int bytes_received;
+        if((bytes_received = recv(sock, buf, BUF_SIZE, 0)) > 1)
+        {
+            buf[bytes_received] = '\0';
+            fprintf(stdout, "Received:\n");
+            fprintf(stdout, "%s", buf);
+        }
+
+        // ptr指向下一个request
+        char *tmp = ptr + 4;
+        ptr = strstr(tmp, "\r\n\r\n");
     }
 
     freeaddrinfo(servinfo);

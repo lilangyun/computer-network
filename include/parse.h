@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #define SUCCESS 0
+#define ERROR   1
 
 //Header field
 typedef struct
