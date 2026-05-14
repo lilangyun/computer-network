@@ -52,7 +52,7 @@ int main(int argc, char* argv[])
     ssize_t readret;
     socklen_t cli_size;
     struct sockaddr_in addr, cli_addr;
-    char buf[8192];  // 接收Buf
+    char buf[8192];   // 接收Buf
     char sbuf[8192];  // 发送Buf
 
     fprintf(stdout, "----- Liso Server -----\n");
@@ -101,33 +101,47 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
 
-        // 生成IP字符串
+        // 生成 IP 字符串
         char client_ip[16];
         strcpy(client_ip, inet_ntoa(cli_addr.sin_addr));
         fprintf(stderr, "%s\n", client_ip);
 
-        readret = 0;
+        // 初始化
+        readret = 0;         // 返回值
+        int keep_alive = 1;  // 是否持久连接
+        int parsed = 0;      // 已经解析过的字符数量
 
-        // recv 接收模块
-        while((readret = recv(client_sock, buf, 8192, 0)) >= 1) {
-            // 是否保持持久连接
-            int keep_alive = 1;
-
-            // parse 解析模块
-            Request *request = parse(buf, readret, client_sock);
-
-            // response 响应模块
-            keep_alive = handle_request(request, buf, sbuf, client_sock, client_ip);
-            
-            // reset 重置操作
-            free(request);
-            memset(buf, 0, 8192);
-            memset(sbuf,0, 8192);
-
-            if(keep_alive == 0) {
-                // 不保持连接
+        // Server
+        while(keep_alive){
+            // 接收模块
+            readret = recv(client_sock, buf, 8192, 0);
+            // 是否终止
+            if(readret <= 0){
                 break;
             }
+            parsed = 0;
+            // 流水线处理
+            while(parsed < readret){
+                int last_parsed = parsed;
+                // 未解析完
+                Request *request = parse_pipeline(buf, readret, &parsed, client_sock);
+                
+                if(parsed == last_parsed){
+                    fprintf(stderr, "Parse the unexpected space line.\n");
+                    break;
+                }
+
+                // 处理模块
+                keep_alive = handle_request(request, buf, sbuf, client_sock, client_ip);
+                
+                // 重置
+                if(request != NULL){
+                    free(request);
+                }
+                memset(sbuf, 0, 8192);
+            }
+            // 重置
+            memset(buf, 0, 8192);
         }
 
         if (readret == -1)
@@ -156,18 +170,19 @@ int main(int argc, char* argv[])
 
 // 响应模块
 int handle_request(Request *request, char *buf, char *sbuf, int client_sock, const char *client_ip){
+    // 错误处理
+    if(request == NULL){
+        strcpy(sbuf, RESPONSE_400);
+        send(client_sock, sbuf, strlen(sbuf), 0);
+        return 1;
+    }
+
     // 组装请求行 -- 传入日志模块
     char request_line[256];
     sprintf(request_line, "%s %s %s",request->http_method, request->http_uri, request->http_version);
 
     // 分支 -- 判断是哪种请求
-    if(request == NULL){
-        strcpy(sbuf, RESPONSE_400);
-        send(client_sock, sbuf, strlen(sbuf), 0);
-        access_log(client_ip, request_line, 404, 0);
-        return 0;
-    }
-    else if(strcmp(request->http_method, "GET") == 0 || strcmp(request->http_method, "HEAD") == 0){
+    if(strcmp(request->http_method, "GET") == 0 || strcmp(request->http_method, "HEAD") == 0){
         if(strcmp(request->http_version, "HTTP/1.1") != 0){
             strcpy(sbuf, RESPONSE_505);
             send(client_sock, sbuf, strlen(sbuf), 0);

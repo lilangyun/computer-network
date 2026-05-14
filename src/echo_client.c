@@ -65,30 +65,20 @@ int main(int argc, char* argv[])
     char msg[BUF_SIZE], send_buf[BUF_SIZE];
     // 读文件
     read(fd, msg, BUF_SIZE);
-    char *ptr = strstr(msg, "\r\n\r\n");  // 分割
-    char *tmp = msg;
+    strcpy(send_buf, msg);
 
-    while( ptr != NULL) {
-        // 追加"\r\n"
-        memcpy(send_buf, tmp, ptr - tmp + 4);
-        
-        // send all only once
-        send(sock, send_buf, strlen(send_buf), 0);  //  send msg
-        fprintf(stdout, "Sending:\n");
-        fprintf(stdout, "%s", send_buf);  // hints
+    send(sock, send_buf, strlen(send_buf), 0);
+    fprintf(stdout, "Sending:\n%s\n", send_buf);
 
-        // 接收MESSAGE
-        int bytes_received;
-        if((bytes_received = recv(sock, buf, BUF_SIZE, 0)) > 1)
-        {
-            buf[bytes_received] = '\0';
-            fprintf(stdout, "Received:\n");
-            fprintf(stdout, "%s", buf);
+    // 循环接收响应
+    while(1){
+        int bytes_received = recv(sock, buf, BUF_SIZE, 0);
+        if (bytes_received <= 0) {
+            break;  // 连接关闭或出错
         }
-
-        // ptr指向下一个request
-        char *tmp = ptr + 4;
-        ptr = strstr(tmp, "\r\n\r\n");
+        buf[bytes_received] = '\0';
+        fprintf(stdout, "Received:\n%s\n", buf);
+        memset(buf, 0, BUF_SIZE);
     }
 
     freeaddrinfo(servinfo);
