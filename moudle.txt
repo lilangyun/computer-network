@@ -32,6 +32,7 @@ main(argc, argv):
     close_log()
 
 
+/* 2阶段 */
 
 // GET规则实现
 GET(request, buf, sbuf):
@@ -55,3 +56,40 @@ GET(request, buf, sbuf):
     // 发送响应
     send(sbuf)
 
+
+/* 第3阶段 */
+
+// HTTP Pipelining 核心解析逻辑
+
+// 初始化变量
+parsed = 0; total_len = 0;
+
+while (keep_alive) {
+    // 接收数据
+    ret = recv(client_sock, recv_buf + total_len, BUF_SIZE - total_len, 0);
+    if (ret <= 0) break;
+    total_len += ret;
+
+    // 循环解析缓冲区中的多个请求
+    while (parsed < total_len) {
+        // 解析一个完整请求，parsed指针自动前移
+        req = parse_pipeline(recv_buf, total_len, &parsed);
+        
+        if (req == NULL) {
+            // 跳过错误的请求，继续解析下一个
+            skip_to_next_request(recv_buf, &parsed, total_len);
+            continue;
+        }
+        
+        // 处理请求并发送响应
+        keep_alive = handle_request(req, send_buf, client_sock);
+        
+        // 释放请求资源
+        free(req->headers);
+        free(req);
+    }
+    
+    // 所有请求处理完毕，重置缓冲区
+    parsed = 0;
+    total_len = 0;
+}

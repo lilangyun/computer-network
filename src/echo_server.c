@@ -26,7 +26,7 @@
 #include "log.h"
 
 #define ECHO_PORT 9999
-#define BUF_SIZE 4096
+#define BUF_SIZE 10000
 
 const char *RESPONSE_200 = "HTTP/1.1 200 OK\r\n";
 const char *RESPONSE_400 = "HTTP/1.1 400 Bad request\r\n\r\n";
@@ -43,7 +43,7 @@ int close_socket(int sock);
 
 
 // 模块函数
-int handle_request(Request *request, char *buf, char *sbuf, int client_sock, const char *client_ip);
+int handle_request(Request *request, char *buf, int request_size, char *sbuf, int client_sock, const char *client_ip);
 
 // 主函数
 int main(int argc, char* argv[])
@@ -52,8 +52,8 @@ int main(int argc, char* argv[])
     ssize_t readret;
     socklen_t cli_size;
     struct sockaddr_in addr, cli_addr;
-    char buf[8192];   // 接收Buf
-    char sbuf[8192];  // 发送Buf
+    char recv_buf[BUF_SIZE];   // 接收Buf
+    char send_buf[BUF_SIZE];  // 发送Buf
 
     fprintf(stdout, "----- Liso Server -----\n");
     // 开启日志模块
@@ -89,7 +89,7 @@ int main(int argc, char* argv[])
     }
 
     /* finally, loop waiting for input and then write it back */
-    while (1)
+    while(1)
     {
         cli_size = sizeof(cli_addr);
         if ((client_sock = accept(sock, (struct sockaddr *) &cli_addr,
@@ -110,38 +110,54 @@ int main(int argc, char* argv[])
         readret = 0;         // 返回值
         int keep_alive = 1;  // 是否持久连接
         int parsed = 0;      // 已经解析过的字符数量
+        int total_len = 0;
 
         // Server
         while(keep_alive){
             // 接收模块
-            readret = recv(client_sock, buf, 8192, 0);
+            readret = recv(client_sock, recv_buf + total_len, BUF_SIZE - total_len, 0);
             // 是否终止
             if(readret <= 0){
                 break;
             }
-            parsed = 0;
+
+            total_len += readret;
             // 流水线处理
-            while(parsed < readret){
-                int last_parsed = parsed;
+            while(parsed < total_len){
                 // 未解析完
-                Request *request = parse_pipeline(buf, readret, &parsed, client_sock);
-                
-                if(parsed == last_parsed){
-                    fprintf(stderr, "Parse the unexpected space line.\n");
-                    break;
-                }
+                int previous_parsed = parsed;
+                // 继续解析
+                Request *request = parse_pipeline(recv_buf, total_len, &parsed, client_sock);
 
                 // 处理模块
-                keep_alive = handle_request(request, buf, sbuf, client_sock, client_ip);
+                int request_size = parsed - previous_parsed;
+                keep_alive = handle_request(request, recv_buf + previous_parsed, request_size, send_buf, client_sock, client_ip);
+
+                // 如果当前请求为错误请求，则识别下一条请求
+                if(request == NULL){
+                    while(parsed + 4 <= total_len){
+                        if(memcmp(recv_buf + parsed, "\r\n\r\n", 4) == 0){
+                            parsed += 4;
+                            break;
+                        }
+                        parsed++;
+                    }
+                    break;
+                }
                 
                 // 重置
                 if(request != NULL){
+                    free(request->headers);
                     free(request);
                 }
-                memset(sbuf, 0, 8192);
+                memset(send_buf, 0, BUF_SIZE);
             }
             // 重置
-            memset(buf, 0, 8192);
+            if(parsed >= total_len){
+                parsed = 0;
+                total_len = 0;
+                memset(recv_buf, 0, BUF_SIZE);
+            }
         }
 
         if (readret == -1)
@@ -169,7 +185,7 @@ int main(int argc, char* argv[])
 }
 
 // 响应模块
-int handle_request(Request *request, char *buf, char *sbuf, int client_sock, const char *client_ip){
+int handle_request(Request *request, char *buf, int request_size, char *sbuf, int client_sock, const char *client_ip){
     // 错误处理
     if(request == NULL){
         strcpy(sbuf, RESPONSE_400);
@@ -187,7 +203,7 @@ int handle_request(Request *request, char *buf, char *sbuf, int client_sock, con
             strcpy(sbuf, RESPONSE_505);
             send(client_sock, sbuf, strlen(sbuf), 0);
             access_log(client_ip, request_line, 505, 0);
-            return 0;
+            return 1;
         }
 
         char file_path[1024] = "./static_site";
@@ -209,14 +225,14 @@ int handle_request(Request *request, char *buf, char *sbuf, int client_sock, con
             strcpy(sbuf, RESPONSE_404);
             send(client_sock, sbuf, strlen(sbuf), 0);
             error_log(client_ip, "File Not Found", file_path);
-            return 0;
+            return 1;
         }
         char data[BUF_SIZE];
         int readret = read(fd, data, BUF_SIZE);
         if(readret < 0){
             error_log(client_ip, "File can't read", file_path);
             close(fd);
-            return 0;
+            return 1;
         }
         data[readret] = '\0';
         // 添加头部
@@ -243,10 +259,10 @@ int handle_request(Request *request, char *buf, char *sbuf, int client_sock, con
             strcpy(sbuf, RESPONSE_505);
             send(client_sock, sbuf, strlen(sbuf), 0);
             access_log(client_ip, request_line, 505, 0);
-            return 0;
+            return 1;
         }
         // echo
-        strcpy(sbuf, buf);
+        strncpy(sbuf, buf, request_size);
         send(client_sock, sbuf, strlen(sbuf), 0);
         access_log(client_ip, request_line, 200, strlen(sbuf));
     }
@@ -255,9 +271,9 @@ int handle_request(Request *request, char *buf, char *sbuf, int client_sock, con
         strcpy(sbuf, RESPONSE_501);
         send(client_sock, sbuf, strlen(sbuf), 0);
         access_log(client_ip, request_line, 501, 0);
-        return 0;
+        return 1;
     }
-    return 0;
+    return 1;
 }
 
 // 判断文件类型

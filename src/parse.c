@@ -84,6 +84,7 @@ Request *parse_pipeline(char *buffer, int size, int *parsed, int socketFd) {  //
 		printf("Index Failed\n");
 		return NULL;
 	}
+	// 从已解析处开始解析
 	int i = *parsed, state;
 	size_t offset = 0;
 	char ch;
@@ -92,7 +93,7 @@ Request *parse_pipeline(char *buffer, int size, int *parsed, int socketFd) {  //
 	int num = 0, header_num = 0;
 
 	state = STATE_START;
-	while (state != STATE_CRLFCRLF) {
+	while(state != STATE_CRLFCRLF){
 		char expected = 0;
 
 		if (i == size)
@@ -123,7 +124,7 @@ Request *parse_pipeline(char *buffer, int size, int *parsed, int socketFd) {  //
 	}
 
     // Valid End State
-	if (state == STATE_CRLFCRLF) {
+	if(state == STATE_CRLFCRLF){
 		Request *request = (Request *) malloc(sizeof(Request));
         request->header_count = 0;
         // TODO You will need to handle resizing this in parser.y
@@ -136,9 +137,9 @@ Request *parse_pipeline(char *buffer, int size, int *parsed, int socketFd) {  //
 		request->headers = (Request_header *) malloc(sizeof(Request_header) * header_num);
 		set_parsing_options(buf, offset, request);
 
-		if (yyparse() == SUCCESS) {
+		if(yyparse() == SUCCESS){
+			// 是正确的请求，则parsed := i
 			*parsed = i;
-			yylex_destroy();
 			return request;
 		}
 	}
