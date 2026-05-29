@@ -1,0 +1,172 @@
+/* 1阶段 */
+
+//  主循环
+while( true ){
+    client_fd = accept( sock )  //  等待连接
+    //  接收模块
+    while( recv( client_fd, buffer ) ){
+        //  解析模块
+        request = parse( buffer )
+        //  响应模块
+        if( request == NULL ){  //  格式错误
+            send( wrong_format, client_fd )
+        }
+        else if( implemented ){  //  已经实现的方法
+            echo()  //  回显
+        }
+        else{  //  未实现的方法
+            send( not_implement, client_fd )
+        }
+    }
+    //  关闭套接字
+    close( client_fd )
+}  
+
+/* 2阶段 */
+
+// server 主函数
+main(argc, argv):
+    // 开启日志模块
+    init_log()
+
+    // 创建缓冲区
+    buf[8192], sbuf[8192]
+
+    // 创建套接字
+    socket(sock)
+    bind(sock)
+    listen(sock)
+
+    // 接收模块
+    while true do:
+        // 连接
+        client_sock <- accept(sock)
+
+        // 接收信息
+        while recv(client_sock, buf) >= 1 do:
+            // 解析模块
+            request <- parse(buf)
+
+            // 响应模块
+            keep_alive <- respond_handle(request)
+            if keep_alive = 0 then
+                break
+        // 断开连接
+        close(client_sock)
+    
+    close(sock)
+    close_log()
+
+
+/* 2阶段 */
+
+// GET规则实现
+GET(request, buf, sbuf):
+    // 路径映射
+    file_path <- "./static_site/"
+    if request.uri = NULL then:
+        file_path.cat(index.html)
+    else:
+        file_path.cat(request.uri)
+
+    // 文件处理
+    fd <- open(file_path)
+    if fd < 0 then:
+        send(response_404)   // 发送 404 Not Found
+        error_log(404, file_path)
+    data <- read(file_path)  // 文件内容读入data
+
+    // 构建头部
+    add_header(request, sbuf, file_path)
+
+    // 发送响应
+    send(sbuf)
+
+
+/* 第3阶段 */
+
+// HTTP Pipelining 核心解析逻辑
+
+// 初始化变量
+parsed = 0; total_len = 0;
+
+while (keep_alive) {
+    // 接收数据
+    ret = recv(client_sock, recv_buf + total_len, BUF_SIZE - total_len, 0);
+    if (ret <= 0) break;
+    total_len += ret;
+
+    // 循环解析缓冲区中的多个请求
+    while (parsed < total_len) {
+        // 解析一个完整请求，parsed指针自动前移
+        req = parse_pipeline(recv_buf, total_len, &parsed);
+        
+        if (req == NULL) {
+            // 跳过错误的请求，继续解析下一个
+            skip_to_next_request(recv_buf, &parsed, total_len);
+            continue;
+        }
+        
+        // 处理请求并发送响应
+        keep_alive = handle_request(req, send_buf, client_sock);
+        
+        // 释放请求资源
+        free(req->headers);
+        free(req);
+    }
+    
+    // 所有请求处理完毕，重置缓冲区
+    parsed = 0;
+    total_len = 0;
+}
+
+
+/* 第4阶段 - 并发处理 */
+
+// 数据结构
+client_context {
+    socket; keep_alive; parsed; total_len;
+    recv_buf[]; send_buf[]; ip[16];
+}
+
+// 服务器主函数
+main():
+    init_log()
+    sock = socket(); bind(sock); listen(sock)
+    
+    // 初始化客户端数组和fd_set
+    client_set[FD_SETSIZE], 所有socket = -1
+    fd_set read_set, ready_set
+    FD_ZERO(&read_set); FD_SET(sock, &read_set)
+    fd_max = sock
+
+    // 服务器主循环
+    while true:
+        ready_set = read_set
+        select(fd_max+1, &ready_set, NULL, NULL, NULL)
+        
+        // 处理新连接
+        if FD_ISSET(sock, &ready_set):
+            client_sock = accept(sock)
+            setsockopt(client_sock, SO_RCVTIMEO, 500ms)  // 超时隔离
+            // 查找空闲client_set槽位并初始化
+            FD_SET(client_sock, &read_set)
+            fd_max = max(client_sock, fd_max)
+        
+        // 处理已有客户端数据
+        else:
+            for i = sock+1 to fd_max:
+                if FD_ISSET(i, &ready_set):
+                    t = find_client(i, client_set)
+                    
+                    // 处理该连接上的所有请求（复用第三阶段逻辑）
+                    while client_set[t].keep_alive:
+                        recv(i, client_set[t].recv_buf + total_len)
+                        流水线解析并响应(client_set[t])
+                    
+                    // 清理连接
+                    FD_CLR(i, &read_set)
+                    client_set[t].socket = -1
+                    close(i)
+    
+    close_log()

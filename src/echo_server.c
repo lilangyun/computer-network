@@ -41,7 +41,6 @@ void parse_fileType(char *fileName, char *fileType);
 int add_header(Request *request, char *sbuf, char *file_path);
 int close_socket(int sock);
 
-
 // 模块函数
 int handle_request(Request *request, char *buf, int request_size, char *sbuf, int client_sock, const char *client_ip);
 
@@ -133,7 +132,7 @@ int main(int argc, char* argv[])
                 int request_size = parsed - previous_parsed;
                 keep_alive = handle_request(request, recv_buf + previous_parsed, request_size, send_buf, client_sock, client_ip);
 
-                // 如果当前请求为错误请求，则识别下一条请求
+                // 如果当前请求为错误请求 -- 识别下一条请求
                 if(request == NULL){
                     while(parsed + 4 <= total_len){
                         if(memcmp(recv_buf + parsed, "\r\n\r\n", 4) == 0){
@@ -142,17 +141,16 @@ int main(int argc, char* argv[])
                         }
                         parsed++;
                     }
-                    break;
                 }
                 
-                // 重置
+                // 当前请求为正确格式 -- 释放request
                 if(request != NULL){
                     free(request->headers);
                     free(request);
                 }
                 memset(send_buf, 0, BUF_SIZE);
             }
-            // 重置
+            // 解析完毕 -- 重置
             if(parsed >= total_len){
                 parsed = 0;
                 total_len = 0;
