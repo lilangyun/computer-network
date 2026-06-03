@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CGI Login Test</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>CGI 登录测试</h1>
+    <form action="/cgi/login.cgi" method="GET">
+        <label>账号：</label>
+        <input type="text" name="username" placeholder="请输入账号"><br><br>
+        <label>密码：</label>
+        <input type="password" name="password" placeholder="请输入密码"><br><br>
+        <input type="submit" value="提交">
+    </form>
+    <p>注意：使用 GET 方法，数据会显示在 URL 中</p>
+</body>
+</html>
