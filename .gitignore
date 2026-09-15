@@ -1,0 +1,48 @@
+# Build artifacts
+/obj/
+/example
+/liso_server
+/liso_client
+/echo_server
+/echo_client
+
+# Generated lexer/parser sources
+/src/lex.yy.c
+/src/y.tab.c
+/src/y.tab.h
+
+# CGI build artifacts
+/cgi/CGI/cgi
+/static_site/cgi/CGI/cgi
+
+# Runtime logs
+*.log
+
+# Local snapshots and archives
+*.tar
+*.tar.gz
+
+# Python cache and virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Editors and operating-system files
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Common native artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+core
+core.*
