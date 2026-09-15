@@ -4,6 +4,7 @@
 /liso_server
 /liso_client
 /echo_server
+/echo_client
 
 # Generated lexer/parser sources
 /src/lex.yy.c
@@ -18,9 +19,8 @@
 *.log
 
 # Local snapshots and archives
-/Week*.tar
-/week*.tar
-/cgi/cgi.tar.gz
+*.tar
+*.tar.gz
 
 # Python cache and virtual environments
 __pycache__/
