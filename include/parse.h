@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #define SUCCESS 0
+#define ERROR   1
 
 //Header field
 typedef struct
@@ -11,7 +12,7 @@ typedef struct
 	char header_value[4096];
 } Request_header;
 
-//HTTP Request Header
+//HTTP Request
 typedef struct
 {
 	char http_version[50];
@@ -21,8 +22,10 @@ typedef struct
 	int header_count;
 } Request;
 
-Request* parse(char *buffer, int size,int socketFd);
+Request *parse(char *buffer, int size, int socketFd);
+Request *parse_pipeline(char *buffer, int size, int *parsed, int socketFd);
 
 // functions decalred in parser.y
 int yyparse();
+int yylex_destroy();
 void set_parsing_options(char *buf, size_t i, Request *request);

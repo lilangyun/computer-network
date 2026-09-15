@@ -22,17 +22,15 @@
 #include <netinet/ip.h>
 
 #define ECHO_PORT 9999
-#define BUF_SIZE 4096
+#define BUF_SIZE 10000
 
 int main(int argc, char* argv[])
 {
     if (argc != 4)
     {
-        fprintf(stderr, "usage: %s <server-ip> <port> <file-path>",argv[0]);
+        fprintf(stderr, "usage: %s <server-ip> <port> <file-path>\n",argv[0]);
         return EXIT_FAILURE;
     }
-
-    char buf[BUF_SIZE];
         
     int status, sock;
     struct addrinfo hints;
@@ -50,30 +48,33 @@ int main(int argc, char* argv[])
 
     if((sock = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol)) == -1)
     {
-        fprintf(stderr, "Socket failed");
+        fprintf(stderr, "Socket failed\n");
         return EXIT_FAILURE;
     }
     
-    if (connect (sock, servinfo->ai_addr, servinfo->ai_addrlen) == -1)
+    if (connect(sock, servinfo->ai_addr, servinfo->ai_addrlen) == -1)
     {
-        fprintf(stderr, "Connect");
+        fprintf(stderr, "Connect\n");
         return EXIT_FAILURE;
     }
 
     // 评测平台是通过文件去检测的
-    int fd = open(argv[3], O_RDONLY);
-    int readret = read(fd, buf, BUF_SIZE);
+    int fd = open(argv[3], O_RDONLY); 
+    char read_buf[BUF_SIZE], send_buf[BUF_SIZE], recv_buf[BUF_SIZE];
+    // 读文件
+    read(fd, read_buf, BUF_SIZE);
+    strcpy(send_buf, read_buf);
 
-    // send all only once
-    send(sock, buf , readret, 0);  //  send msg
-    fprintf(stdout, "Sending %s", buf);  // hints
+    // 发送文件
+    send(sock, send_buf, strlen(send_buf), 0);
+    fprintf(stdout, "Sending:\n%s\n", send_buf);
 
-    // 接收MESSAGE
+    // 循环接收响应
     int bytes_received;
-    if((bytes_received = recv(sock, buf, BUF_SIZE, 0)) > 1)
-    {
-        buf[bytes_received] = '\0';
-        fprintf(stdout, "Received %s", buf);
+    while((bytes_received = recv(sock, recv_buf, BUF_SIZE, 0)) >= 1){
+        recv_buf[bytes_received] = '\0';
+        fprintf(stdout, "Received:\n%s\n", recv_buf);
+        memset(recv_buf, 0, BUF_SIZE);
     }
 
     freeaddrinfo(servinfo);
